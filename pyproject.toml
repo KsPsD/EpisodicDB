@@ -9,7 +9,11 @@ description = "OLAP-based memory engine for AI agents"
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.2.0",
+    "mcp[cli]>=1.0.0",
 ]
+
+[project.scripts]
+episodicdb-mcp = "src.mcp.__main__:main"
 
 [project.optional-dependencies]
 dev = [
