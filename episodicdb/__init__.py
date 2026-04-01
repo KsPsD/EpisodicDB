@@ -1,4 +1,4 @@
-from src.db import EpisodicDB
+from episodicdb.db import EpisodicDB
 
 
 class EpisodicDBError(Exception):

@@ -12,7 +12,7 @@ def server_params(tmp_path):
     db_path = str(tmp_path / "test.db")
     return StdioServerParameters(
         command=sys.executable,
-        args=["-m", "src.mcp", "--agent-id", "test", "--db", db_path],
+        args=["-m", "episodicdb.mcp", "--agent-id", "test", "--db", db_path],
     )
 
 

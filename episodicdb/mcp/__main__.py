@@ -9,7 +9,7 @@ def main() -> None:
     parser.add_argument("--db", default=None, help="DuckDB file path (default: ~/.episodicdb/{agent_id}.db)")
     args = parser.parse_args()
 
-    from src.mcp.server import serve
+    from episodicdb.mcp.server import serve
     serve(agent_id=args.agent_id, db_path=args.db)
 
 

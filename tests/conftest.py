@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from src.db import EpisodicDB
+from episodicdb.db import EpisodicDB
 
 
 @pytest.fixture

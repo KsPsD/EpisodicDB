@@ -1,6 +1,6 @@
 import pytest
-from src.db import EpisodicDB
-from src import EpisodicDBError
+from episodicdb.db import EpisodicDB
+from episodicdb import EpisodicDBError
 
 
 def test_connect_in_memory():

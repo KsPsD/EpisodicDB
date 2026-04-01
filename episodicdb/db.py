@@ -4,9 +4,9 @@ from pathlib import Path
 
 import duckdb
 
-from src.analytics import AnalyticsMixin
-from src.writer import WriterMixin
-from src.schema import (
+from episodicdb.analytics import AnalyticsMixin
+from episodicdb.writer import WriterMixin
+from episodicdb.schema import (
     CALLED_AT_INDEX_DDL,
     DECISIONS_DDL,
     EPISODES_DDL,
@@ -31,7 +31,7 @@ class EpisodicDB(WriterMixin, AnalyticsMixin):
         try:
             self._conn = duckdb.connect(resolved)
         except Exception as exc:
-            from src import EpisodicDBError
+            from episodicdb import EpisodicDBError
             raise EpisodicDBError(f"Cannot open database: {resolved}") from exc
 
         self._load_vss()
@@ -41,7 +41,7 @@ class EpisodicDB(WriterMixin, AnalyticsMixin):
         try:
             self._conn.execute("INSTALL vss; LOAD vss")
         except Exception as exc:
-            from src import EpisodicDBError
+            from episodicdb import EpisodicDBError
             raise EpisodicDBError("VSS extension unavailable") from exc
 
     def _init_schema(self) -> None:

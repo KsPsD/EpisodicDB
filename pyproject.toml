@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-episodicdb-mcp = "src.mcp.__main__:main"
+episodicdb-mcp = "episodicdb.mcp.__main__:main"
 
 [project.optional-dependencies]
 dev = [

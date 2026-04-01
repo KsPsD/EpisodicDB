@@ -5,7 +5,7 @@ from datetime import datetime
 
 from mcp.server.fastmcp import FastMCP
 
-from src.db import EpisodicDB
+from episodicdb.db import EpisodicDB
 
 _db: EpisodicDB | None = None
 _default_agent_id: str = ""
