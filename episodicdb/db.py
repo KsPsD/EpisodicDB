@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import duckdb
+
+logger = logging.getLogger(__name__)
 
 from episodicdb.analytics import AnalyticsMixin
 from episodicdb.temporal import TemporalMixin
@@ -42,10 +45,13 @@ class EpisodicDB(WriterMixin, AnalyticsMixin, TemporalMixin):
 
     def _load_vss(self) -> None:
         try:
-            self._conn.execute("INSTALL vss; LOAD vss")
-        except Exception as exc:
-            from episodicdb import EpisodicDBError
-            raise EpisodicDBError("VSS extension unavailable") from exc
+            self._conn.execute("LOAD vss")
+        except Exception:
+            try:
+                self._conn.execute("INSTALL vss; LOAD vss")
+            except Exception as exc:
+                from episodicdb import EpisodicDBError
+                raise EpisodicDBError("VSS extension unavailable") from exc
 
     def _init_schema(self) -> None:
         self._conn.execute(EPISODES_DDL)
@@ -55,7 +61,10 @@ class EpisodicDB(WriterMixin, AnalyticsMixin, TemporalMixin):
         try:
             self._conn.execute("SET hnsw_enable_experimental_persistence = true")
         except Exception:
-            pass
+            logger.warning(
+                "hnsw_enable_experimental_persistence not supported; "
+                "HNSW index will not persist across restarts"
+            )
         self._conn.execute(HNSW_INDEX_DDL)
         self._conn.execute(CALLED_AT_INDEX_DDL)
         self._conn.execute(STARTED_AT_INDEX_DDL)

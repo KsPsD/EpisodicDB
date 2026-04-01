@@ -120,25 +120,31 @@ class WriterMixin:
         This is the temporal supersession pattern that DuckDB cannot enforce
         natively (no triggers, no temporal constraints).
         """
-        # Close the currently-active fact for this key (auto-supersession)
-        self._conn.execute(
-            """
-            UPDATE facts
-            SET valid_until = COALESCE($3, NOW())
-            WHERE agent_id = $1
-              AND key = $2
-              AND valid_until IS NULL
-            """,
-            [self.agent_id, key, valid_from],
-        )
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            # Close the currently-active fact for this key (auto-supersession)
+            self._conn.execute(
+                """
+                UPDATE facts
+                SET valid_until = COALESCE($3, NOW())
+                WHERE agent_id = $1
+                  AND key = $2
+                  AND valid_until IS NULL
+                """,
+                [self.agent_id, key, valid_from],
+            )
 
-        row = self._conn.execute(
-            """
-            INSERT INTO facts
-                (agent_id, key, value, valid_from, episode_id)
-            VALUES ($1, $2, $3, COALESCE($4, NOW()), $5)
-            RETURNING id::TEXT
-            """,
-            [self.agent_id, key, value, valid_from, episode_id],
-        ).fetchone()
+            row = self._conn.execute(
+                """
+                INSERT INTO facts
+                    (agent_id, key, value, valid_from, episode_id)
+                VALUES ($1, $2, $3, COALESCE($4, NOW()), $5)
+                RETURNING id::TEXT
+                """,
+                [self.agent_id, key, value, valid_from, episode_id],
+            ).fetchone()
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
         return row[0]
