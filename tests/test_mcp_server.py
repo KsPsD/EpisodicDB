@@ -25,7 +25,7 @@ async def test_list_tools(server_params):
             await session.initialize()
             tools = await session.list_tools()
             tool_names = [t.name for t in tools.tools]
-            assert len(tool_names) == 9
+            assert len(tool_names) == 12
             assert "record_episode" in tool_names
             assert "record_tool_call" in tool_names
             assert "record_decision" in tool_names
@@ -183,3 +183,70 @@ async def test_similar_episodes_via_mcp(server_params):
             })
             data = json.loads(result.content[0].text)
             assert isinstance(data, list)
+
+
+# --- temporal tools ---
+
+@pytest.mark.asyncio
+async def test_list_tools_includes_temporal(server_params):
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            tool_names = [t.name for t in tools.tools]
+            assert "record_fact" in tool_names
+            assert "facts_as_of" in tool_names
+            assert "fact_history" in tool_names
+            assert len(tool_names) == 12
+
+
+@pytest.mark.asyncio
+async def test_record_fact_via_mcp(server_params):
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("record_fact", {
+                "key": "theme", "value": "dark",
+            })
+            text = result.content[0].text
+            assert len(text) == 36
+
+
+@pytest.mark.asyncio
+async def test_fact_supersession_via_mcp(server_params):
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            await session.call_tool("record_fact", {
+                "key": "theme", "value": "dark",
+                "valid_from": "2025-01-01T00:00:00+00:00",
+            })
+            await session.call_tool("record_fact", {
+                "key": "theme", "value": "light",
+                "valid_from": "2025-06-01T00:00:00+00:00",
+            })
+            result = await session.call_tool("fact_history", {"key": "theme"})
+            data = json.loads(result.content[0].text)
+            assert len(data) == 2
+            assert data[0]["value"] == "dark"
+            assert data[0]["valid_until"] is not None
+            assert data[1]["value"] == "light"
+            assert data[1]["valid_until"] is None
+
+
+@pytest.mark.asyncio
+async def test_facts_as_of_via_mcp(server_params):
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            await session.call_tool("record_fact", {
+                "key": "lang", "value": "ko",
+                "valid_from": "2025-01-01T00:00:00+00:00",
+            })
+            result = await session.call_tool("facts_as_of", {
+                "as_of": "2025-06-01T00:00:00+00:00",
+            })
+            data = json.loads(result.content[0].text)
+            assert len(data) == 1
+            assert data[0]["key"] == "lang"
+            assert data[0]["value"] == "ko"

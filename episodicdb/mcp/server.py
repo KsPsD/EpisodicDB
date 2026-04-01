@@ -211,6 +211,72 @@ def similar_episodes(
         db.agent_id = original
 
 
+@mcp_server.tool()
+def record_fact(
+    key: str,
+    value: str,
+    episode_id: str | None = None,
+    valid_from: str | None = None,
+    agent_id: str | None = None,
+) -> str:
+    """Record a fact with automatic supersession of previous values."""
+    db = _get_db()
+    original = db.agent_id
+    db.agent_id = _resolve_agent_id(agent_id)
+    try:
+        vf = datetime.fromisoformat(valid_from) if valid_from else None
+        return db.record_fact(
+            key=key,
+            value=value,
+            episode_id=episode_id,
+            valid_from=vf,
+        )
+    finally:
+        db.agent_id = original
+
+
+@mcp_server.tool()
+def facts_as_of(
+    as_of: str,
+    agent_id: str | None = None,
+) -> str:
+    """Return all facts that were valid at a specific point in time."""
+    db = _get_db()
+    original = db.agent_id
+    db.agent_id = _resolve_agent_id(agent_id)
+    try:
+        results = db.facts_as_of(as_of=datetime.fromisoformat(as_of))
+        for r in results:
+            if r.get("valid_from"):
+                r["valid_from"] = r["valid_from"].isoformat()
+            if r.get("valid_until"):
+                r["valid_until"] = r["valid_until"].isoformat()
+        return json.dumps(results)
+    finally:
+        db.agent_id = original
+
+
+@mcp_server.tool()
+def fact_history(
+    key: str,
+    agent_id: str | None = None,
+) -> str:
+    """Return the full change history of a fact key."""
+    db = _get_db()
+    original = db.agent_id
+    db.agent_id = _resolve_agent_id(agent_id)
+    try:
+        results = db.fact_history(key=key)
+        for r in results:
+            if r.get("valid_from"):
+                r["valid_from"] = r["valid_from"].isoformat()
+            if r.get("valid_until"):
+                r["valid_until"] = r["valid_until"].isoformat()
+        return json.dumps(results)
+    finally:
+        db.agent_id = original
+
+
 def serve(agent_id: str, db_path: str | None = None) -> None:
     global _db, _default_agent_id
     _default_agent_id = agent_id
