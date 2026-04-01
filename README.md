@@ -197,19 +197,35 @@ EpisodicDB(agent_id="my-agent", path=":memory:")  # in-memory (testing)
 
 ### Embeddings
 
-EpisodicDB does not generate embeddings. Pass them in:
+Built-in helpers for popular providers (lazy imports, no hard dependencies):
+
+```bash
+pip install episodicdb[openai]   # OpenAI
+pip install episodicdb[voyage]   # Voyage AI
+pip install episodicdb[ollama]   # Ollama (local)
+pip install episodicdb[all]      # all providers
+```
 
 ```python
-import openai
+from episodicdb import embeddings
 
-response = openai.embeddings.create(
-    model="text-embedding-3-small",
-    input="what the agent was doing"
-)
-embedding = response.data[0].embedding  # 1536 dims
+# OpenAI
+vec = embeddings.openai("what the agent was doing")
 
-db.record_episode(status="success", embedding=embedding)
-db.similar_episodes(embedding, status="failure", limit=5)
+# Voyage AI
+vec = embeddings.voyage("what the agent was doing")
+
+# Local Ollama
+vec = embeddings.ollama("what the agent was doing")
+
+db.record_episode(status="success", embedding=vec)
+db.similar_episodes(vec, status="failure", limit=5)
+```
+
+Or bring your own:
+
+```python
+db.record_episode(status="success", embedding=your_1536_dim_list)
 ```
 
 ## Development
