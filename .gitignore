@@ -24,6 +24,10 @@ htmlcov/
 # EpisodicDB runtime
 ~/.episodicdb/
 
+# Internal / agent config
+docs/superpowers/
+CLAUDE.md
+
 # IDE
 .idea/
 .vscode/
