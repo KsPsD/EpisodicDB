@@ -70,13 +70,16 @@ def _dispatch(method: str, args: dict) -> dict:
     """Call an EpisodicDB method and return the result."""
     assert _db is not None
 
+    # Extract agent_id without mutating the caller's dict
+    call_args = {k: v for k, v in args.items() if k != "agent_id"}
+    agent_id = args.get("agent_id")
+
     with _db_lock:
-        agent_id = args.pop("agent_id", None)
         original = _db.agent_id
         if agent_id is not None:
             _db.agent_id = agent_id
         try:
-            return _call_method(method, args)
+            return _call_method(method, call_args)
         finally:
             _db.agent_id = original
 

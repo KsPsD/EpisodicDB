@@ -16,7 +16,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -90,12 +90,13 @@ class EpisodicDBClient:
         except URLError as e:
             raise ConnectionError(f"Cannot connect to daemon: {e}") from e
 
-    def _call(self, method: str, **kwargs) -> any:
+    def _call(self, method: str, **kwargs) -> Any:
         kwargs["agent_id"] = self.agent_id
         # Convert datetimes to ISO strings
-        for k, v in kwargs.items():
-            if isinstance(v, datetime):
-                kwargs[k] = v.isoformat()
+        kwargs = {
+            k: v.isoformat() if isinstance(v, datetime) else v
+            for k, v in kwargs.items()
+        }
         resp = self._http("POST", "/call", {"method": method, "args": kwargs})
         if "error" in resp:
             raise RuntimeError(resp["error"])

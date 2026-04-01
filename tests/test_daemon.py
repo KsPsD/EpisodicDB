@@ -16,19 +16,25 @@ from episodicdb.daemon import read_daemon_info
 
 
 @pytest.fixture()
+def daemon_agent_id():
+    """Unique agent_id per test run to avoid pidfile collisions."""
+    return f"test-daemon-{os.getpid()}"
+
+
+@pytest.fixture()
 def daemon_port():
     """Use a unique port to avoid conflicts."""
     return 18900 + os.getpid() % 1000
 
 
 @pytest.fixture()
-def daemon_process(tmp_path, daemon_port):
+def daemon_process(tmp_path, daemon_port, daemon_agent_id):
     """Start a daemon process for testing."""
     db_path = str(tmp_path / "test.db")
     proc = subprocess.Popen(
         [
             sys.executable, "-m", "episodicdb.daemon",
-            "--agent-id", "test-daemon",
+            "--agent-id", daemon_agent_id,
             "--port", str(daemon_port),
             "--db", db_path,
         ],
@@ -49,10 +55,10 @@ def daemon_process(tmp_path, daemon_port):
 
 
 @pytest.fixture()
-def client(daemon_process, daemon_port):
+def client(daemon_process, daemon_port, daemon_agent_id):
     """Create a client connected to the test daemon."""
     return EpisodicDBClient(
-        agent_id="test-daemon",
+        agent_id=daemon_agent_id,
         port=daemon_port,
         auto_start=False,
     )
@@ -123,13 +129,13 @@ def test_compare_periods(client):
     assert "delta" in result
 
 
-def test_two_clients_same_daemon(daemon_process, daemon_port):
+def test_two_clients_same_daemon(daemon_process, daemon_port, daemon_agent_id):
     """Two clients can connect to the same daemon simultaneously."""
     client1 = EpisodicDBClient(
-        agent_id="test-daemon", port=daemon_port, auto_start=False,
+        agent_id=daemon_agent_id, port=daemon_port, auto_start=False,
     )
     client2 = EpisodicDBClient(
-        agent_id="test-daemon", port=daemon_port, auto_start=False,
+        agent_id=daemon_agent_id, port=daemon_port, auto_start=False,
     )
 
     ep1 = client1.record_episode(status="success", task_type="from_client_1")
@@ -142,3 +148,49 @@ def test_two_clients_same_daemon(daemon_process, daemon_port):
     facts2 = client2.top_failing_tools(days=7)
     assert isinstance(facts1, list)
     assert isinstance(facts2, list)
+
+
+def test_session_lifecycle(client):
+    """start_session / end_session round-trip through daemon."""
+    session_id = client.start_session(client_type="test-client")
+    assert isinstance(session_id, str) and len(session_id) > 0
+
+    # Record episode with session
+    ep_id = client.record_episode(status="success", session_id=session_id)
+    assert isinstance(ep_id, str)
+
+    # End session should not raise
+    client.end_session(session_id)
+
+
+def test_unknown_method_returns_error(daemon_process, daemon_port):
+    """Calling a non-existent method returns an error, not a crash."""
+    import json
+    from urllib.request import Request, urlopen
+
+    body = json.dumps({"method": "no_such_method", "args": {}}).encode()
+    req = Request(
+        f"http://127.0.0.1:{daemon_port}/call",
+        data=body,
+        method="POST",
+    )
+    req.add_header("Content-Type", "application/json")
+    resp = json.loads(urlopen(req, timeout=5).read())
+    assert "error" in resp
+    assert "Unknown method" in resp["error"]
+
+
+def test_private_method_blocked(daemon_process, daemon_port):
+    """Methods starting with _ are blocked."""
+    import json
+    from urllib.request import Request, urlopen
+
+    body = json.dumps({"method": "_init_schema", "args": {}}).encode()
+    req = Request(
+        f"http://127.0.0.1:{daemon_port}/call",
+        data=body,
+        method="POST",
+    )
+    req.add_header("Content-Type", "application/json")
+    resp = json.loads(urlopen(req, timeout=5).read())
+    assert "error" in resp

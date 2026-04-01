@@ -237,6 +237,7 @@ def serve(
     global _db, _default_agent_id, _session_id, _client_type
     _default_agent_id = agent_id
     _client_type = client_type
+    _session_id = None
 
     if use_daemon:
         from episodicdb.client import EpisodicDBClient
@@ -251,4 +252,7 @@ def serve(
     finally:
         if _session_id:
             _db.end_session(_session_id)
-        _db.close()
+            _session_id = None
+        if _db:
+            _db.close()
+            _db = None
