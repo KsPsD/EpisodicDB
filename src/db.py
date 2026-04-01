@@ -7,9 +7,11 @@ import duckdb
 from src.analytics import AnalyticsMixin
 from src.writer import WriterMixin
 from src.schema import (
+    CALLED_AT_INDEX_DDL,
     DECISIONS_DDL,
     EPISODES_DDL,
     HNSW_INDEX_DDL,
+    STARTED_AT_INDEX_DDL,
     TOOL_CALLS_DDL,
 )
 
@@ -51,6 +53,8 @@ class EpisodicDB(WriterMixin, AnalyticsMixin):
         except Exception:
             pass
         self._conn.execute(HNSW_INDEX_DDL)
+        self._conn.execute(CALLED_AT_INDEX_DDL)
+        self._conn.execute(STARTED_AT_INDEX_DDL)
 
     def close(self) -> None:
         self._conn.close()

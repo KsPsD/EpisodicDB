@@ -44,3 +44,13 @@ HNSW_INDEX_DDL = """
 CREATE INDEX IF NOT EXISTS episodes_embedding_idx
 ON episodes USING HNSW (context_embedding);
 """
+
+CALLED_AT_INDEX_DDL = """
+CREATE INDEX IF NOT EXISTS tool_calls_called_at_idx
+ON tool_calls (called_at);
+"""
+
+STARTED_AT_INDEX_DDL = """
+CREATE INDEX IF NOT EXISTS episodes_started_at_idx
+ON episodes (started_at);
+"""
