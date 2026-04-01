@@ -14,5 +14,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
-    "pytest-asyncio>=0.23",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/episodicdb"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
