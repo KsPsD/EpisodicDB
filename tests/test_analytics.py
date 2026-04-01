@@ -63,6 +63,14 @@ def test_compare_periods_episode_count(seeded_db):
     assert result["period_b"] >= 0
 
 
+def test_compare_periods_tool_calls(seeded_db):
+    result = seeded_db.compare_periods(metric="tool_calls", days=7)
+    assert "period_a" in result
+    assert "period_b" in result
+    assert "delta" in result
+    assert abs(result["delta"] - (result["period_a"] - result["period_b"])) < 1e-6
+
+
 # --- before_failure_sequence ---
 
 def test_before_failure_sequence(db):
@@ -118,6 +126,11 @@ def test_similar_episodes_status_filter(db):
     results = db.similar_episodes(embedding=q, status="success", limit=10)
     for r in results:
         assert r["status"] == "success"
+
+
+def test_similar_episodes_dimension_error(db):
+    with pytest.raises(ValueError, match="Expected 1536 dimensions"):
+        db.similar_episodes(embedding=[0.1, 0.2, 0.3], limit=5)
 
 
 def test_similar_episodes_excludes_null_embedding(db):

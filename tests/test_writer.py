@@ -61,6 +61,36 @@ def test_record_tool_call_fk_constraint(db):
         )
 
 
+def test_record_episode_with_valid_embedding(db):
+    import random
+    random.seed(42)
+    emb = [random.uniform(-1, 1) for _ in range(1536)]
+    ep_id = db.record_episode(status="success", embedding=emb)
+    row = db._conn.execute(
+        "SELECT context_embedding FROM episodes WHERE id = $1::UUID", [ep_id]
+    ).fetchone()
+    assert row[0] is not None
+    assert len(row[0]) == 1536
+
+
+def test_record_tool_call_called_at_override(db):
+    from datetime import datetime, timezone
+    ep_id = db.record_episode(status="success")
+    fixed_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    tc_id = db.record_tool_call(
+        episode_id=ep_id, tool_name="Bash", outcome="success",
+        called_at_override=fixed_time,
+    )
+    row = db._conn.execute(
+        "SELECT called_at FROM tool_calls WHERE id = $1::UUID", [tc_id]
+    ).fetchone()
+    from datetime import timezone as tz
+    stored = row[0].astimezone(tz.utc)
+    assert stored.year == 2025
+    assert stored.month == 1
+    assert stored.hour == 12
+
+
 def test_record_decision_returns_uuid(db):
     ep_id = db.record_episode(status="success")
     dec_id = db.record_decision(
