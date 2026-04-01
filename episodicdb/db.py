@@ -5,6 +5,7 @@ from pathlib import Path
 import duckdb
 
 from episodicdb.analytics import AnalyticsMixin
+from episodicdb.temporal import TemporalMixin
 from episodicdb.writer import WriterMixin
 from episodicdb.schema import (
     CALLED_AT_INDEX_DDL,
@@ -20,7 +21,7 @@ from episodicdb.schema import (
 _DEFAULT_DIR = Path.home() / ".episodicdb"
 
 
-class EpisodicDB(WriterMixin, AnalyticsMixin):
+class EpisodicDB(WriterMixin, AnalyticsMixin, TemporalMixin):
     def __init__(self, agent_id: str, path: str | None = None) -> None:
         self.agent_id = agent_id
 

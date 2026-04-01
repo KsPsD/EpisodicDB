@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from datetime import datetime
 
 from mcp.server.fastmcp import FastMCP
@@ -16,11 +17,31 @@ def _get_db() -> EpisodicDB:
     return _db
 
 
-def _resolve_agent_id(agent_id: str | None) -> str:
-    return agent_id if agent_id is not None else _default_agent_id
+@contextmanager
+def _agent_scope(agent_id: str | None):
+    """Temporarily override the DB's agent_id, restoring it on exit."""
+    db = _get_db()
+    original = db.agent_id
+    db.agent_id = agent_id if agent_id is not None else _default_agent_id
+    try:
+        yield db
+    finally:
+        db.agent_id = original
+
+
+def _serialize_timestamps(rows: list[dict], keys: list[str]) -> list[dict]:
+    """Convert datetime fields to ISO strings for JSON serialization."""
+    for r in rows:
+        for k in keys:
+            if r.get(k):
+                r[k] = r[k].isoformat()
+    return rows
 
 
 mcp_server = FastMCP("episodicdb")
+
+
+# --- Writer tools ---
 
 
 @mcp_server.tool()
@@ -35,23 +56,16 @@ def record_episode(
     agent_id: str | None = None,
 ) -> str:
     """Record an episode (task/session) for an agent."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
-        sa = datetime.fromisoformat(started_at) if started_at else None
-        ea = datetime.fromisoformat(ended_at) if ended_at else None
+    with _agent_scope(agent_id) as db:
         return db.record_episode(
             status=status,
             task_type=task_type,
             context=context,
             embedding=embedding,
             tags=tags,
-            started_at=sa,
-            ended_at=ea,
+            started_at=datetime.fromisoformat(started_at) if started_at else None,
+            ended_at=datetime.fromisoformat(ended_at) if ended_at else None,
         )
-    finally:
-        db.agent_id = original
 
 
 @mcp_server.tool()
@@ -67,11 +81,7 @@ def record_tool_call(
     agent_id: str | None = None,
 ) -> str:
     """Record a tool call within an episode."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
-        cao = datetime.fromisoformat(called_at_override) if called_at_override else None
+    with _agent_scope(agent_id) as db:
         return db.record_tool_call(
             episode_id=episode_id,
             tool_name=tool_name,
@@ -80,10 +90,8 @@ def record_tool_call(
             result=result,
             duration_ms=duration_ms,
             error_message=error_message,
-            called_at_override=cao,
+            called_at_override=datetime.fromisoformat(called_at_override) if called_at_override else None,
         )
-    finally:
-        db.agent_id = original
 
 
 @mcp_server.tool()
@@ -96,10 +104,7 @@ def record_decision(
     agent_id: str | None = None,
 ) -> str:
     """Record a decision made during an episode."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
+    with _agent_scope(agent_id) as db:
         return db.record_decision(
             episode_id=episode_id,
             rationale=rationale,
@@ -107,108 +112,6 @@ def record_decision(
             alternatives=alternatives,
             outcome=outcome,
         )
-    finally:
-        db.agent_id = original
-
-
-@mcp_server.tool()
-def top_failing_tools(
-    days: int = 7,
-    limit: int = 5,
-    agent_id: str | None = None,
-) -> str:
-    """Get tools with the most failures, ranked by failure count."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
-        return json.dumps(db.top_failing_tools(days=days, limit=limit))
-    finally:
-        db.agent_id = original
-
-
-@mcp_server.tool()
-def never_succeeded_tools(
-    agent_id: str | None = None,
-) -> str:
-    """List tools that have never had a successful outcome."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
-        return json.dumps(db.never_succeeded_tools())
-    finally:
-        db.agent_id = original
-
-
-@mcp_server.tool()
-def hourly_failure_rate(
-    days: int = 7,
-    agent_id: str | None = None,
-) -> str:
-    """Get failure counts grouped by hour of day."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
-        return json.dumps(db.hourly_failure_rate(days=days))
-    finally:
-        db.agent_id = original
-
-
-@mcp_server.tool()
-def compare_periods(
-    metric: str,
-    days: int = 7,
-    agent_id: str | None = None,
-) -> str:
-    """Compare a metric between two consecutive time periods."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
-        return json.dumps(db.compare_periods(metric=metric, days=days))
-    finally:
-        db.agent_id = original
-
-
-@mcp_server.tool()
-def before_failure_sequence(
-    tool_name: str,
-    lookback: int = 3,
-    agent_id: str | None = None,
-) -> str:
-    """Find which tools commonly precede failures of a given tool."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
-        return json.dumps(db.before_failure_sequence(tool_name=tool_name, lookback=lookback))
-    finally:
-        db.agent_id = original
-
-
-@mcp_server.tool()
-def similar_episodes(
-    embedding: list[float],
-    status: str | None = None,
-    limit: int = 5,
-    agent_id: str | None = None,
-) -> str:
-    """Find episodes most similar to a given embedding vector."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
-        results = db.similar_episodes(embedding=embedding, status=status, limit=limit)
-        for r in results:
-            if r.get("started_at"):
-                r["started_at"] = r["started_at"].isoformat()
-            if r.get("ended_at"):
-                r["ended_at"] = r["ended_at"].isoformat()
-        return json.dumps(results)
-    finally:
-        db.agent_id = original
 
 
 @mcp_server.tool()
@@ -220,19 +123,84 @@ def record_fact(
     agent_id: str | None = None,
 ) -> str:
     """Record a fact with automatic supersession of previous values."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
-        vf = datetime.fromisoformat(valid_from) if valid_from else None
+    with _agent_scope(agent_id) as db:
         return db.record_fact(
             key=key,
             value=value,
             episode_id=episode_id,
-            valid_from=vf,
+            valid_from=datetime.fromisoformat(valid_from) if valid_from else None,
         )
-    finally:
-        db.agent_id = original
+
+
+# --- Analytics tools ---
+
+
+@mcp_server.tool()
+def top_failing_tools(
+    days: int = 7,
+    limit: int = 5,
+    agent_id: str | None = None,
+) -> str:
+    """Get tools with the most failures, ranked by failure count."""
+    with _agent_scope(agent_id) as db:
+        return json.dumps(db.top_failing_tools(days=days, limit=limit))
+
+
+@mcp_server.tool()
+def never_succeeded_tools(
+    agent_id: str | None = None,
+) -> str:
+    """List tools that have never had a successful outcome."""
+    with _agent_scope(agent_id) as db:
+        return json.dumps(db.never_succeeded_tools())
+
+
+@mcp_server.tool()
+def hourly_failure_rate(
+    days: int = 7,
+    agent_id: str | None = None,
+) -> str:
+    """Get failure counts grouped by hour of day."""
+    with _agent_scope(agent_id) as db:
+        return json.dumps(db.hourly_failure_rate(days=days))
+
+
+@mcp_server.tool()
+def compare_periods(
+    metric: str,
+    days: int = 7,
+    agent_id: str | None = None,
+) -> str:
+    """Compare a metric between two consecutive time periods."""
+    with _agent_scope(agent_id) as db:
+        return json.dumps(db.compare_periods(metric=metric, days=days))
+
+
+@mcp_server.tool()
+def before_failure_sequence(
+    tool_name: str,
+    lookback: int = 3,
+    agent_id: str | None = None,
+) -> str:
+    """Find which tools commonly precede failures of a given tool."""
+    with _agent_scope(agent_id) as db:
+        return json.dumps(db.before_failure_sequence(tool_name=tool_name, lookback=lookback))
+
+
+@mcp_server.tool()
+def similar_episodes(
+    embedding: list[float],
+    status: str | None = None,
+    limit: int = 5,
+    agent_id: str | None = None,
+) -> str:
+    """Find episodes most similar to a given embedding vector."""
+    with _agent_scope(agent_id) as db:
+        results = db.similar_episodes(embedding=embedding, status=status, limit=limit)
+        return json.dumps(_serialize_timestamps(results, ["started_at", "ended_at"]))
+
+
+# --- Temporal tools ---
 
 
 @mcp_server.tool()
@@ -241,19 +209,9 @@ def facts_as_of(
     agent_id: str | None = None,
 ) -> str:
     """Return all facts that were valid at a specific point in time."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
+    with _agent_scope(agent_id) as db:
         results = db.facts_as_of(as_of=datetime.fromisoformat(as_of))
-        for r in results:
-            if r.get("valid_from"):
-                r["valid_from"] = r["valid_from"].isoformat()
-            if r.get("valid_until"):
-                r["valid_until"] = r["valid_until"].isoformat()
-        return json.dumps(results)
-    finally:
-        db.agent_id = original
+        return json.dumps(_serialize_timestamps(results, ["valid_from", "valid_until"]))
 
 
 @mcp_server.tool()
@@ -262,19 +220,9 @@ def fact_history(
     agent_id: str | None = None,
 ) -> str:
     """Return the full change history of a fact key."""
-    db = _get_db()
-    original = db.agent_id
-    db.agent_id = _resolve_agent_id(agent_id)
-    try:
+    with _agent_scope(agent_id) as db:
         results = db.fact_history(key=key)
-        for r in results:
-            if r.get("valid_from"):
-                r["valid_from"] = r["valid_from"].isoformat()
-            if r.get("valid_until"):
-                r["valid_until"] = r["valid_until"].isoformat()
-        return json.dumps(results)
-    finally:
-        db.agent_id = original
+        return json.dumps(_serialize_timestamps(results, ["valid_from", "valid_until"]))
 
 
 def serve(agent_id: str, db_path: str | None = None) -> None:

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Literal
+
+from episodicdb.schema import EMBEDDING_DIM
 
 
 class AnalyticsMixin:
@@ -174,48 +175,36 @@ class AnalyticsMixin:
         limit: int = 5,
     ) -> list[dict]:
         """SQL predicate + vector similarity in a single execution plan."""
-        if len(embedding) != 1536:
-            raise ValueError(f"Expected 1536 dimensions, got {len(embedding)}")
+        if len(embedding) != EMBEDDING_DIM:
+            raise ValueError(f"Expected {EMBEDDING_DIM} dimensions, got {len(embedding)}")
 
+        params: list = [embedding, self.agent_id]
+        status_clause = ""
         if status is not None:
-            rows = self._conn.execute(
-                """
-                SELECT
-                    id::TEXT,
-                    agent_id,
-                    status,
-                    task_type,
-                    started_at,
-                    ended_at,
-                    array_cosine_distance(context_embedding, $1::FLOAT[1536]) AS distance
-                FROM episodes
-                WHERE context_embedding IS NOT NULL
-                  AND agent_id = $2
-                  AND status = $3
-                ORDER BY distance ASC
-                LIMIT $4
-                """,
-                [embedding, self.agent_id, status, limit],
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                """
-                SELECT
-                    id::TEXT,
-                    agent_id,
-                    status,
-                    task_type,
-                    started_at,
-                    ended_at,
-                    array_cosine_distance(context_embedding, $1::FLOAT[1536]) AS distance
-                FROM episodes
-                WHERE context_embedding IS NOT NULL
-                  AND agent_id = $2
-                ORDER BY distance ASC
-                LIMIT $3
-                """,
-                [embedding, self.agent_id, limit],
-            ).fetchall()
+            status_clause = "AND status = $3"
+            params.append(status)
+        params.append(limit)
+        limit_param = f"${len(params)}"
+
+        rows = self._conn.execute(
+            f"""
+            SELECT
+                id::TEXT,
+                agent_id,
+                status,
+                task_type,
+                started_at,
+                ended_at,
+                array_cosine_distance(context_embedding, $1::FLOAT[{EMBEDDING_DIM}]) AS distance
+            FROM episodes
+            WHERE context_embedding IS NOT NULL
+              AND agent_id = $2
+              {status_clause}
+            ORDER BY distance ASC
+            LIMIT {limit_param}
+            """,
+            params,
+        ).fetchall()
 
         return [
             {
@@ -226,62 +215,6 @@ class AnalyticsMixin:
                 "started_at": r[4],
                 "ended_at": r[5],
                 "distance": r[6],
-            }
-            for r in rows
-        ]
-
-    def facts_as_of(
-        self,
-        as_of: datetime,
-    ) -> list[dict]:
-        """Return all facts that were valid at a specific point in time.
-
-        This is the temporal point-in-time query that DuckDB has no native
-        syntax for (no AS OF, no temporal tables). Every caller would need
-        to manually write the valid_from/valid_until predicate.
-        """
-        rows = self._conn.execute(
-            """
-            SELECT key, value, valid_from, valid_until, episode_id::TEXT
-            FROM facts
-            WHERE agent_id = $1
-              AND valid_from <= $2
-              AND (valid_until IS NULL OR valid_until > $2)
-            ORDER BY key
-            """,
-            [self.agent_id, as_of],
-        ).fetchall()
-        return [
-            {
-                "key": r[0],
-                "value": r[1],
-                "valid_from": r[2],
-                "valid_until": r[3],
-                "episode_id": r[4],
-            }
-            for r in rows
-        ]
-
-    def fact_history(
-        self,
-        key: str,
-    ) -> list[dict]:
-        """Return the full change history of a fact key, ordered chronologically."""
-        rows = self._conn.execute(
-            """
-            SELECT value, valid_from, valid_until, episode_id::TEXT
-            FROM facts
-            WHERE agent_id = $1 AND key = $2
-            ORDER BY valid_from ASC
-            """,
-            [self.agent_id, key],
-        ).fetchall()
-        return [
-            {
-                "value": r[0],
-                "valid_from": r[1],
-                "valid_until": r[2],
-                "episode_id": r[3],
             }
             for r in rows
         ]

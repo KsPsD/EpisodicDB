@@ -1,3 +1,5 @@
+EMBEDDING_DIM = 1536
+
 EPISODES_DDL = """
 CREATE TABLE IF NOT EXISTS episodes (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

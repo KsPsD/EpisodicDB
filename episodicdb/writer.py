@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from typing import Literal
 
-_EMBEDDING_DIM = 1536
+from episodicdb.schema import EMBEDDING_DIM
 
 
 class WriterMixin:
@@ -20,9 +20,9 @@ class WriterMixin:
         started_at: datetime | None = None,
         ended_at: datetime | None = None,
     ) -> str:
-        if embedding is not None and len(embedding) != _EMBEDDING_DIM:
+        if embedding is not None and len(embedding) != EMBEDDING_DIM:
             raise ValueError(
-                f"Expected {_EMBEDDING_DIM} dimensions, got {len(embedding)}"
+                f"Expected {EMBEDDING_DIM} dimensions, got {len(embedding)}"
             )
 
         context_json = json.dumps(context) if context is not None else None
@@ -120,8 +120,6 @@ class WriterMixin:
         This is the temporal supersession pattern that DuckDB cannot enforce
         natively (no triggers, no temporal constraints).
         """
-        now = valid_from if valid_from is not None else None
-
         # Close the currently-active fact for this key (auto-supersession)
         self._conn.execute(
             """
@@ -131,7 +129,7 @@ class WriterMixin:
               AND key = $2
               AND valid_until IS NULL
             """,
-            [self.agent_id, key, now],
+            [self.agent_id, key, valid_from],
         )
 
         row = self._conn.execute(
@@ -141,6 +139,6 @@ class WriterMixin:
             VALUES ($1, $2, $3, COALESCE($4, NOW()), $5)
             RETURNING id::TEXT
             """,
-            [self.agent_id, key, value, now, episode_id],
+            [self.agent_id, key, value, valid_from, episode_id],
         ).fetchone()
         return row[0]
