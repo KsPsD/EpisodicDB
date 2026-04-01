@@ -142,6 +142,33 @@ agent = Agent(
 )
 ```
 
+### Auto-recording (recommended)
+
+Add these rules to your `CLAUDE.md` (or system prompt) so the agent records episodes automatically:
+
+```markdown
+## EpisodicDB — auto-recording rules
+
+EpisodicDB MCP server is connected. Follow these rules to record work automatically.
+
+### On session start
+- Call `record_episode` (status: "partial", task_type: type of work)
+- Remember the episode ID for subsequent tool call / decision records
+
+### During work
+- Record significant tool results with `record_tool_call` (success/failure, duration)
+- Record important decisions with `record_decision` (rationale, alternatives)
+- Record new user/project facts with `record_fact` (e.g. preferred_language, current_project)
+
+### On session end
+- Update the episode status to match the final outcome (success/failure/partial/aborted)
+
+### Guidelines
+- Don't interrupt the user's workflow to record — do it in the background
+- Only record meaningful actions, not every small step
+- Use english snake_case for fact keys (e.g. preferred_language, deploy_target)
+```
+
 ## API
 
 ### Writer
