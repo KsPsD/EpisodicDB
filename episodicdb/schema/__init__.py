@@ -40,6 +40,23 @@ CREATE TABLE IF NOT EXISTS decisions (
 );
 """
 
+FACTS_DDL = """
+CREATE TABLE IF NOT EXISTS facts (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id    TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    valid_from  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    valid_until TIMESTAMPTZ,
+    episode_id  UUID REFERENCES episodes(id)
+);
+"""
+
+FACTS_KEY_IDX_DDL = """
+CREATE INDEX IF NOT EXISTS facts_key_idx
+ON facts (agent_id, key, valid_from);
+"""
+
 HNSW_INDEX_DDL = """
 CREATE INDEX IF NOT EXISTS episodes_embedding_idx
 ON episodes USING HNSW (context_embedding);

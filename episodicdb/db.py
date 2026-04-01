@@ -10,6 +10,8 @@ from episodicdb.schema import (
     CALLED_AT_INDEX_DDL,
     DECISIONS_DDL,
     EPISODES_DDL,
+    FACTS_DDL,
+    FACTS_KEY_IDX_DDL,
     HNSW_INDEX_DDL,
     STARTED_AT_INDEX_DDL,
     TOOL_CALLS_DDL,
@@ -48,6 +50,7 @@ class EpisodicDB(WriterMixin, AnalyticsMixin):
         self._conn.execute(EPISODES_DDL)
         self._conn.execute(TOOL_CALLS_DDL)
         self._conn.execute(DECISIONS_DDL)
+        self._conn.execute(FACTS_DDL)
         try:
             self._conn.execute("SET hnsw_enable_experimental_persistence = true")
         except Exception:
@@ -55,6 +58,7 @@ class EpisodicDB(WriterMixin, AnalyticsMixin):
         self._conn.execute(HNSW_INDEX_DDL)
         self._conn.execute(CALLED_AT_INDEX_DDL)
         self._conn.execute(STARTED_AT_INDEX_DDL)
+        self._conn.execute(FACTS_KEY_IDX_DDL)
 
     def close(self) -> None:
         self._conn.close()

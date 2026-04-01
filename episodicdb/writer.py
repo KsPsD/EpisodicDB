@@ -105,3 +105,42 @@ class WriterMixin:
             [episode_id, rationale, decision_type, alts_json, outcome],
         ).fetchone()
         return row[0]
+
+    def record_fact(
+        self,
+        key: str,
+        value: str,
+        episode_id: str | None = None,
+        valid_from: datetime | None = None,
+    ) -> str:
+        """Record a fact with automatic supersession.
+
+        If a fact with the same key already exists (for this agent) and has no
+        valid_until, its validity window is closed at the new fact's valid_from.
+        This is the temporal supersession pattern that DuckDB cannot enforce
+        natively (no triggers, no temporal constraints).
+        """
+        now = valid_from if valid_from is not None else None
+
+        # Close the currently-active fact for this key (auto-supersession)
+        self._conn.execute(
+            """
+            UPDATE facts
+            SET valid_until = COALESCE($3, NOW())
+            WHERE agent_id = $1
+              AND key = $2
+              AND valid_until IS NULL
+            """,
+            [self.agent_id, key, now],
+        )
+
+        row = self._conn.execute(
+            """
+            INSERT INTO facts
+                (agent_id, key, value, valid_from, episode_id)
+            VALUES ($1, $2, $3, COALESCE($4, NOW()), $5)
+            RETURNING id::TEXT
+            """,
+            [self.agent_id, key, value, now, episode_id],
+        ).fetchone()
+        return row[0]
