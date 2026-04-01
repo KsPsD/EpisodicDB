@@ -10,6 +10,33 @@ from episodicdb.schema import EMBEDDING_DIM
 class WriterMixin:
     """Mixin providing write methods. Requires self._conn and self.agent_id."""
 
+    def start_session(
+        self,
+        client_type: str | None = None,
+        metadata: dict | None = None,
+    ) -> str:
+        """Start a new session. Returns session_id."""
+        metadata_json = json.dumps(metadata) if metadata is not None else None
+        row = self._conn.execute(
+            """
+            INSERT INTO sessions (agent_id, client_type, metadata)
+            VALUES ($1, $2, $3)
+            RETURNING id::TEXT
+            """,
+            [self.agent_id, client_type, metadata_json],
+        ).fetchone()
+        return row[0]
+
+    def end_session(self, session_id: str) -> None:
+        """Close a session by setting ended_at."""
+        self._conn.execute(
+            """
+            UPDATE sessions SET ended_at = NOW()
+            WHERE id = $1::UUID AND agent_id = $2
+            """,
+            [session_id, self.agent_id],
+        )
+
     def record_episode(
         self,
         status: Literal["success", "failure", "partial", "aborted"],
@@ -19,6 +46,7 @@ class WriterMixin:
         tags: list[str] | None = None,
         started_at: datetime | None = None,
         ended_at: datetime | None = None,
+        session_id: str | None = None,
     ) -> str:
         if embedding is not None and len(embedding) != EMBEDDING_DIM:
             raise ValueError(
@@ -30,14 +58,15 @@ class WriterMixin:
         row = self._conn.execute(
             """
             INSERT INTO episodes
-                (agent_id, status, task_type, context, context_embedding, tags,
+                (agent_id, session_id, status, task_type, context, context_embedding, tags,
                  started_at, ended_at)
-            VALUES ($1, $2, $3, $4, $5, $6,
-                    COALESCE($7, NOW()), $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7,
+                    COALESCE($8, NOW()), $9)
             RETURNING id::TEXT
             """,
             [
                 self.agent_id,
+                session_id,
                 status,
                 task_type,
                 context_json,

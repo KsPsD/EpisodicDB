@@ -1,9 +1,21 @@
 EMBEDDING_DIM = 1536
 
+SESSIONS_DDL = """
+CREATE TABLE IF NOT EXISTS sessions (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id      TEXT NOT NULL,
+    client_type   TEXT,
+    started_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at      TIMESTAMPTZ,
+    metadata      JSON
+);
+"""
+
 EPISODES_DDL = """
 CREATE TABLE IF NOT EXISTS episodes (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id          TEXT NOT NULL,
+    session_id        UUID REFERENCES sessions(id),
     started_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     ended_at          TIMESTAMPTZ,
     status            TEXT NOT NULL

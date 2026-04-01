@@ -17,6 +17,7 @@ from episodicdb.schema import (
     FACTS_DDL,
     FACTS_KEY_IDX_DDL,
     HNSW_INDEX_DDL,
+    SESSIONS_DDL,
     STARTED_AT_INDEX_DDL,
     TOOL_CALLS_DDL,
 )
@@ -54,6 +55,7 @@ class EpisodicDB(WriterMixin, AnalyticsMixin, TemporalMixin):
                 raise EpisodicDBError("VSS extension unavailable") from exc
 
     def _init_schema(self) -> None:
+        self._conn.execute(SESSIONS_DDL)
         self._conn.execute(EPISODES_DDL)
         self._conn.execute(TOOL_CALLS_DDL)
         self._conn.execute(DECISIONS_DDL)

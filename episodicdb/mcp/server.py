@@ -10,6 +10,8 @@ from episodicdb.db import EpisodicDB
 
 _db: EpisodicDB | None = None
 _default_agent_id: str = ""
+_session_id: str | None = None
+_client_type: str | None = None
 
 
 def _get_db() -> EpisodicDB:
@@ -65,6 +67,7 @@ def record_episode(
             tags=tags,
             started_at=datetime.fromisoformat(started_at) if started_at else None,
             ended_at=datetime.fromisoformat(ended_at) if ended_at else None,
+            session_id=_session_id,
         )
 
 
@@ -225,11 +228,27 @@ def fact_history(
         return json.dumps(_serialize_timestamps(results, ["valid_from", "valid_until"]))
 
 
-def serve(agent_id: str, db_path: str | None = None) -> None:
-    global _db, _default_agent_id
+def serve(
+    agent_id: str,
+    db_path: str | None = None,
+    use_daemon: bool = False,
+    client_type: str | None = None,
+) -> None:
+    global _db, _default_agent_id, _session_id, _client_type
     _default_agent_id = agent_id
-    _db = EpisodicDB(agent_id=agent_id, path=db_path)
+    _client_type = client_type
+
+    if use_daemon:
+        from episodicdb.client import EpisodicDBClient
+        _db = EpisodicDBClient(agent_id=agent_id, db_path=db_path)
+    else:
+        _db = EpisodicDB(agent_id=agent_id, path=db_path)
+
+    _session_id = _db.start_session(client_type=client_type)
+
     try:
         mcp_server.run(transport="stdio")
     finally:
+        if _session_id:
+            _db.end_session(_session_id)
         _db.close()
