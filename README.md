@@ -2,7 +2,7 @@
 
 **An OLAP-based memory engine for AI agents.**
 
-Existing agent memory systems (Mem0, Zep, Letta) are designed as *search systems*. EpisodicDB treats agent memory as an *analytics problem* — aggregation, time-series patterns, causal tracing, and vector similarity all in a single query engine.
+Existing agent memory systems (Mem0, Zep, Letta) are designed as *search systems*. EpisodicDB treats agent memory as an *analytics problem* — aggregation, time-series patterns, causal tracing, temporal facts, and vector similarity all in a single query engine.
 
 ```sql
 -- "Which tools failed most this week?"
@@ -25,12 +25,13 @@ LIMIT 5;
 
 | Query type | Example | Vector search? |
 |------------|---------|----------------|
-| Similarity | "Seen a similar error before?" | ✅ |
-| Aggregation | "How many tool failures this week?" | ❌ |
-| Time-series | "Do failures spike in the afternoon?" | ❌ |
-| Causal trace | "What tool ran right before failures?" | ❌ |
-| Comparison | "Worse than last week?" | ❌ |
-| Absence | "Tools that never succeeded?" | ❌ |
+| Similarity | "Seen a similar error before?" | Yes |
+| Aggregation | "How many tool failures this week?" | No |
+| Time-series | "Do failures spike in the afternoon?" | No |
+| Causal trace | "What tool ran right before failures?" | No |
+| Comparison | "Worse than last week?" | No |
+| Absence | "Tools that never succeeded?" | No |
+| Temporal | "What was the user's timezone last Tuesday?" | No |
 
 EpisodicDB answers all of them. Vector similarity is just another SQL operator.
 
@@ -38,18 +39,23 @@ EpisodicDB answers all of them. Vector similarity is just another SQL operator.
 
 ```
 EpisodicDB
-├── WriterMixin          record_episode / record_tool_call / record_decision
-└── AnalyticsMixin       6 analytics methods
+├── WriterMixin      record_episode / record_tool_call / record_decision / record_fact
+├── AnalyticsMixin   6 analytics methods + vector similarity
+└── TemporalMixin    facts_as_of / fact_history
 
 Engine: DuckDB (OLAP) + VSS extension (HNSW vector index)
-Schema: episodes + tool_calls + decisions
+Schema: episodes + tool_calls + decisions + facts
+```
+
+## Install
+
+```bash
+pip install episodicdb
 ```
 
 ## Quick Start
 
-```bash
-pip install episodicdb  # coming soon — for now: pip install -e .
-```
+### Python SDK
 
 ```python
 from episodicdb import EpisodicDB
@@ -65,15 +71,75 @@ with EpisodicDB(agent_id="my-agent") as db:
                         duration_ms=120, error_message="permission denied")
     db.record_tool_call(ep_id, "Bash", "success", duration_ms=50)
 
+    # Record temporal facts (auto-supersedes previous values)
+    db.record_fact("user_timezone", "Asia/Seoul", episode_id=ep_id)
+    db.record_fact("user_timezone", "America/New_York")  # closes previous
+
     # Analyze patterns
     print(db.top_failing_tools(days=7))
-    # → [{"tool_name": "Edit", "failures": 5}, ...]
+    # [{"tool_name": "Edit", "failures": 5}, ...]
 
     print(db.before_failure_sequence("Edit"))
-    # → [{"prev_tool": "Bash", "count": 4}, ...]
+    # [{"prev_tool": "Bash", "count": 4}, ...]
 
     print(db.compare_periods("failure_rate", days=7))
-    # → {"period_a": 0.32, "period_b": 0.18, "delta": 0.14}
+    # {"period_a": 0.32, "period_b": 0.18, "delta": 0.14}
+
+    # Time-travel query
+    from datetime import datetime
+    print(db.facts_as_of(datetime(2025, 3, 15)))
+    # [{"key": "user_timezone", "value": "Asia/Seoul", ...}]
+```
+
+### MCP Server (Claude, OpenAI Agents SDK)
+
+EpisodicDB ships an MCP server with 12 tools over stdio.
+
+```bash
+episodicdb-mcp --agent-id my-agent
+episodicdb-mcp --agent-id my-agent --db ./memory.db
+```
+
+**Claude Desktop** (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "episodicdb": {
+      "command": "episodicdb-mcp",
+      "args": ["--agent-id", "my-agent"]
+    }
+  }
+}
+```
+
+**Claude Code** (`.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "episodicdb": {
+      "command": "episodicdb-mcp",
+      "args": ["--agent-id", "my-agent"]
+    }
+  }
+}
+```
+
+**OpenAI Agents SDK**:
+
+```python
+from agents import Agent
+from agents.mcp import MCPServerStdio
+
+agent = Agent(
+    name="my-agent",
+    instructions="You have access to episodic memory.",
+    mcp_servers=[MCPServerStdio(
+        command="episodicdb-mcp",
+        args=["--agent-id", "my-agent"],
+    )],
+)
 ```
 
 ## API
@@ -81,18 +147,20 @@ with EpisodicDB(agent_id="my-agent") as db:
 ### Writer
 
 ```python
-db.record_episode(
-    status,           # "success" | "failure" | "partial" | "aborted"
-    task_type=None,   # str
-    context=None,     # dict (stored as JSON)
-    embedding=None,   # list[float] — 1536-dim, externally generated
-    tags=None,        # list[str]
-    started_at=None,  # datetime (defaults to NOW())
-    ended_at=None,    # datetime
-) -> str              # episode_id (UUID)
+db.record_episode(status, task_type=None, context=None,
+                  embedding=None, tags=None,
+                  started_at=None, ended_at=None) -> str  # episode UUID
 
-db.record_tool_call(episode_id, tool_name, outcome, ...) -> str
-db.record_decision(episode_id, rationale, ...) -> str
+db.record_tool_call(episode_id, tool_name, outcome,
+                    parameters=None, result=None,
+                    duration_ms=None, error_message=None) -> str
+
+db.record_decision(episode_id, rationale,
+                   decision_type=None, alternatives=None,
+                   outcome=None) -> str
+
+db.record_fact(key, value, episode_id=None,
+               valid_from=None) -> str  # auto-supersedes previous
 ```
 
 ### Analytics
@@ -102,9 +170,22 @@ db.record_decision(episode_id, rationale, ...) -> str
 | `top_failing_tools(days, limit)` | Most-failed tools in the last N days |
 | `hourly_failure_rate(days)` | Failure count by hour of day |
 | `before_failure_sequence(tool_name, lookback)` | Tools that precede failures |
-| `compare_periods(metric, days)` | Period A vs period B comparison |
+| `compare_periods(metric, days)` | Period-over-period comparison |
 | `never_succeeded_tools()` | Tools with zero successful calls |
 | `similar_episodes(embedding, status, limit)` | Vector similarity + SQL filter |
+
+### Temporal Facts
+
+Facts are key-value pairs with automatic temporal validity. Recording a new value for the same key closes the previous one.
+
+```python
+db.record_fact("preferred_model", "gpt-4o")
+# later...
+db.record_fact("preferred_model", "claude-sonnet")  # supersedes gpt-4o
+
+db.facts_as_of(some_datetime)   # point-in-time snapshot
+db.fact_history("preferred_model")  # full change log
+```
 
 ### Persistence
 
@@ -125,9 +206,10 @@ response = openai.embeddings.create(
     model="text-embedding-3-small",
     input="what the agent was doing"
 )
-embedding = response.data[0].embedding  # list[float], 1536 dims
+embedding = response.data[0].embedding  # 1536 dims
 
 db.record_episode(status="success", embedding=embedding)
+db.similar_episodes(embedding, status="failure", limit=5)
 ```
 
 ## Development
@@ -136,18 +218,15 @@ db.record_episode(status="success", embedding=embedding)
 git clone https://github.com/KsPsD/EpisodicDB
 cd EpisodicDB
 pip install -e ".[dev]"
-pytest -v
+pytest
 ```
 
 ## Stack
 
 - [DuckDB](https://duckdb.org/) — embedded OLAP engine
 - [DuckDB VSS](https://duckdb.org/docs/extensions/vss) — HNSW vector index
+- [MCP](https://modelcontextprotocol.io/) — Model Context Protocol server
 - Python 3.11+
-
-## Status
-
-`alpha` — core DB layer implemented. MCP server interface coming next.
 
 ## License
 

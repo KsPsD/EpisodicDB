@@ -6,11 +6,33 @@ build-backend = "hatchling.build"
 name = "episodicdb"
 version = "0.1.0"
 description = "OLAP-based memory engine for AI agents"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
+authors = [
+    { name = "KsPsD" },
+]
+keywords = ["ai", "agents", "memory", "olap", "duckdb", "mcp", "vector"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "duckdb>=1.2.0",
     "mcp[cli]>=1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/KsPsD/EpisodicDB"
+Repository = "https://github.com/KsPsD/EpisodicDB"
+Issues = "https://github.com/KsPsD/EpisodicDB/issues"
 
 [project.scripts]
 episodicdb-mcp = "episodicdb.mcp.__main__:main"
