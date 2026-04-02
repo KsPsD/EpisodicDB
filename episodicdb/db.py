@@ -60,6 +60,7 @@ class EpisodicDB(WriterMixin, AnalyticsMixin, TemporalMixin):
         self._conn.execute(TOOL_CALLS_DDL)
         self._conn.execute(DECISIONS_DDL)
         self._conn.execute(FACTS_DDL)
+        self._migrate()
         try:
             self._conn.execute("SET hnsw_enable_experimental_persistence = true")
         except Exception:
@@ -71,6 +72,21 @@ class EpisodicDB(WriterMixin, AnalyticsMixin, TemporalMixin):
         self._conn.execute(CALLED_AT_INDEX_DDL)
         self._conn.execute(STARTED_AT_INDEX_DDL)
         self._conn.execute(FACTS_KEY_IDX_DDL)
+
+    def _migrate(self) -> None:
+        """Apply forward-only migrations for existing databases."""
+        # v0.1.2: add session_id column to episodes (existing DBs lack it)
+        cols = {
+            row[0]
+            for row in self._conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'episodes'"
+            ).fetchall()
+        }
+        if "session_id" not in cols:
+            self._conn.execute(
+                "ALTER TABLE episodes ADD COLUMN session_id UUID REFERENCES sessions(id)"
+            )
 
     def close(self) -> None:
         self._conn.close()
