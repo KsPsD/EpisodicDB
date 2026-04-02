@@ -20,7 +20,7 @@ from typing import Any, Literal
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from episodicdb.daemon import _DEFAULT_PORT, read_daemon_info
+from episodicdb.daemon import _DEFAULT_PORT, _port_for_agent, read_daemon_info
 
 _PIDFILE_DIR = Path.home() / ".episodicdb"
 
@@ -44,7 +44,7 @@ class EpisodicDBClient:
         elif port is not None:
             self._port = port
         elif auto_start:
-            self._port = _DEFAULT_PORT
+            self._port = _port_for_agent(agent_id)
             self._start_daemon()
         else:
             raise ConnectionError(

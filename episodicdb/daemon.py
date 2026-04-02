@@ -25,6 +25,11 @@ from episodicdb.db import EpisodicDB
 _PIDFILE_DIR = Path.home() / ".episodicdb"
 _DEFAULT_PORT = 7823
 
+
+def _port_for_agent(agent_id: str) -> int:
+    """Derive a deterministic port from agent_id to avoid collisions."""
+    return 7823 + (hash(agent_id) % 1000)
+
 _db: EpisodicDB | None = None
 _db_lock = Lock()
 
