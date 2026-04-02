@@ -35,8 +35,9 @@ def _serialize_timestamps(rows: list[dict], keys: list[str]) -> list[dict]:
     """Convert datetime fields to ISO strings for JSON serialization."""
     for r in rows:
         for k in keys:
-            if r.get(k):
-                r[k] = r[k].isoformat()
+            v = r.get(k)
+            if v and not isinstance(v, str):
+                r[k] = v.isoformat()
     return rows
 
 

@@ -113,17 +113,10 @@ episodicdb-mcp --agent-id my-agent --db ./memory.db
 }
 ```
 
-**Claude Code** (`.mcp.json`):
+**Claude Code**:
 
-```json
-{
-  "mcpServers": {
-    "episodicdb": {
-      "command": "episodicdb-mcp",
-      "args": ["--agent-id", "my-agent"]
-    }
-  }
-}
+```bash
+claude mcp add --scope user episodicdb -- episodicdb-mcp --agent-id my-agent --client-type claude-code --daemon
 ```
 
 **OpenAI Agents SDK**:
@@ -140,6 +133,26 @@ agent = Agent(
         args=["--agent-id", "my-agent"],
     )],
 )
+```
+
+### Daemon Mode (multi-session)
+
+DuckDB has a single-writer lock. If you run multiple MCP clients (e.g. several Claude Code sessions), use `--daemon` so a single process owns the DB and clients route through HTTP:
+
+```bash
+# CLI flag — the MCP server auto-starts a daemon on localhost
+episodicdb-mcp --agent-id my-agent --daemon
+
+# Or run the daemon manually
+python -m episodicdb.daemon --agent-id my-agent --port 7823
+```
+
+```python
+# Python SDK equivalent
+from episodicdb import EpisodicDBClient
+
+client = EpisodicDBClient(agent_id="my-agent")  # auto-starts daemon
+client.record_episode(status="success", task_type="coding")
 ```
 
 ### Auto-recording (recommended)
@@ -222,7 +235,12 @@ EpisodicDB(agent_id="my-agent", path="./x.db")    # explicit path
 EpisodicDB(agent_id="my-agent", path=":memory:")  # in-memory (testing)
 ```
 
-### Embeddings
+### Embeddings & Similar Episodes
+
+`similar_episodes` uses vector similarity to find past episodes. The flow:
+
+1. **Record** — embed the context when recording an episode
+2. **Search** — embed the query and call `similar_episodes`
 
 Built-in helpers for popular providers (lazy imports, no hard dependencies):
 
@@ -234,26 +252,33 @@ pip install episodicdb[all]      # all providers
 ```
 
 ```python
-from episodicdb import embeddings
+from episodicdb import EpisodicDB, embeddings
 
-# OpenAI
-vec = embeddings.openai("what the agent was doing")
+db = EpisodicDB(agent_id="my-agent")
 
-# Voyage AI
-vec = embeddings.voyage("what the agent was doing")
+# 1. Record with embedding
+vec = embeddings.openai("editing auth.py, got permission denied")
+db.record_episode(
+    status="failure",
+    task_type="file_edit",
+    context={"file": "auth.py", "error": "permission denied"},
+    embedding=vec,
+)
 
-# Local Ollama
-vec = embeddings.ollama("what the agent was doing")
-
-db.record_episode(status="success", embedding=vec)
-db.similar_episodes(vec, status="failure", limit=5)
+# 2. Later — find similar past episodes
+query_vec = embeddings.openai("permission error when modifying files")
+results = db.similar_episodes(query_vec, status="failure", limit=5)
+# [{"id": "...", "context": {...}, "distance": 0.12, ...}, ...]
 ```
 
-Or bring your own:
+Or bring your own embedding function (must produce 1536-dim vectors):
 
 ```python
 db.record_episode(status="success", embedding=your_1536_dim_list)
+db.similar_episodes(your_query_vector, limit=5)
 ```
+
+> **Note:** EpisodicDB stores and searches vectors — it does not generate embeddings. The caller is responsible for calling an embedding API. This keeps the core dependency-free.
 
 ## Development
 
