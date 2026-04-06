@@ -280,6 +280,70 @@ db.similar_episodes(your_query_vector, limit=5)
 
 > **Note:** EpisodicDB stores and searches vectors — it does not generate embeddings. The caller is responsible for calling an embedding API. This keeps the core dependency-free.
 
+## Benchmarks
+
+EpisodicDB ships a built-in benchmark suite covering 7 query categories across 10K–100K episodes. All numbers below were measured on Apple M3 Pro, DuckDB 1.4.3, Python 3.13.
+
+### Query Latency
+
+![Query latency by category](assets/bench_latency_by_category.png)
+
+| Category | 10K p50 | 50K p50 | 100K p50 | What it measures |
+|----------|---------|---------|----------|-----------------|
+| Temporal | 0.28ms | 0.58ms | 1.08ms | Point-in-time fact snapshots, change history |
+| Comparison | 0.96ms | 2.23ms | 3.54ms | Period-over-period deltas (failure rate, counts) |
+| Aggregation | 1.23ms | 2.88ms | 4.70ms | GROUP BY analytics (top failing tools) |
+| Absence | 2.62ms | 6.23ms | 10.12ms | Anti-join (tools that never succeeded) |
+| Time-series | 3.96ms | 9.94ms | 14.34ms | Hourly bucketed failure patterns |
+| Causal trace | 6.33ms | 18.58ms | 25.94ms | LAG window functions (what preceded failures) |
+| **Similarity** | **20.51ms** | **77.87ms** | **153.09ms** | **Vector cosine distance (HNSW index)** |
+
+All SQL-based queries stay under 26ms at 100K episodes. Vector similarity is the bottleneck — and the reason Phase 2 exists.
+
+### Scaling Behavior
+
+![Scaling factor](assets/bench_scaling_factor.png)
+
+With 10x more data (10K → 100K episodes):
+- **SQL queries scale 3.6–4.1x** — sub-linear, DuckDB's columnar engine shines
+- **Vector similarity scales 7.5x** — HNSW index bypassed when combined with WHERE clause ([#2](https://github.com/KsPsD/EpisodicDB/issues/2))
+
+This is the core finding: SQL analytics are already fast enough. The hybrid query path (SQL filter + vector search) is where optimization matters.
+
+### Write Throughput
+
+![Write throughput](assets/bench_write_throughput.png)
+
+Each "episode" includes ~4.5 tool calls and ~1.5 decisions. At 100K scale, write throughput is 149 composite records/sec — more than enough for agent memory workloads where writes are human-interaction-paced.
+
+### Run it yourself
+
+```bash
+git clone https://github.com/KsPsD/EpisodicDB && cd EpisodicDB
+pip install -e ".[dev]" && pip install matplotlib
+
+python -m benchmarks.run_benchmark                          # 10K (default)
+python -m benchmarks.run_benchmark --scale 10000 50000 100000  # multi-scale
+python -m benchmarks.visualize                               # generate charts
+```
+
+## Roadmap
+
+### Phase 1: DuckDB Prototype — **Complete** (v0.1.6)
+
+Core OLAP engine, MCP server, daemon mode, temporal facts, embeddings. Everything in this README works today.
+
+### Phase 2: Custom Hybrid Query Planner — Next
+
+The benchmark shows that SQL queries scale sub-linearly, but vector similarity degrades near-linearly because DuckDB's VSS extension can't combine HNSW index scans with SQL predicates in a single execution plan ([#2](https://github.com/KsPsD/EpisodicDB/issues/2), [#4](https://github.com/KsPsD/EpisodicDB/issues/4)).
+
+Phase 2 adds a query planner layer that:
+1. Estimates predicate selectivity before execution
+2. Chooses filter-first vs vector-first strategy based on cost
+3. Uses a filtered vector index (ACORN-style) for the hybrid path
+
+Goal: bring similarity scaling from 7.5x → sub-linear, matching the SQL queries.
+
 ## Development
 
 ```bash
