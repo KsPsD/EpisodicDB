@@ -112,6 +112,11 @@ class TestCostModel:
         strategy = choose_strategy(n_total=100_000, selectivity=0.01, limit=5)
         assert strategy == "filter_first"
 
+    def test_medium_selectivity_chooses_vector_first(self):
+        # 20% selectivity — embedding fetch too expensive for filter-first
+        strategy = choose_strategy(n_total=100_000, selectivity=0.2, limit=5)
+        assert strategy == "vector_first"
+
     def test_high_selectivity_chooses_vector_first(self):
         strategy = choose_strategy(n_total=100_000, selectivity=0.8, limit=5)
         assert strategy == "vector_first"
