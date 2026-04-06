@@ -33,6 +33,7 @@ def run_single_scale(
     iterations: int,
     categories: list[str] | None,
     seed: int,
+    results_dir: Path | None = None,
 ) -> BenchmarkResult:
     """Generate data + run benchmark for one scale level."""
     db_path = TEMP_DB_DIR / f"bench_{scale}.db"
@@ -79,7 +80,8 @@ def run_single_scale(
     )
 
     # Save
-    out_path = RESULTS_DIR / f"{scale}_episodes.json"
+    save_dir = results_dir if results_dir else RESULTS_DIR
+    out_path = save_dir / f"{scale}_episodes.json"
     result.save(out_path)
     print(f"\n  Results saved: {out_path}")
 
@@ -106,12 +108,17 @@ def main():
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
+        "--tag", type=str, default=None,
+        help="Tag for results subdirectory (e.g. 'phase1.5', 'phase2a')",
+    )
+    parser.add_argument(
         "--keep-db", action="store_true",
         help="Keep temporary DB files after benchmark",
     )
     args = parser.parse_args()
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    results_dir = RESULTS_DIR / args.tag if args.tag else RESULTS_DIR
+    results_dir.mkdir(parents=True, exist_ok=True)
 
     total_start = time.monotonic()
     results = []
@@ -122,6 +129,7 @@ def main():
             iterations=args.iterations,
             categories=args.categories,
             seed=args.seed,
+            results_dir=results_dir,
         )
         results.append(result)
 

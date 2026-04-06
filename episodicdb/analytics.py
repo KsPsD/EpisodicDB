@@ -174,47 +174,30 @@ class AnalyticsMixin:
         status: str | None = None,
         limit: int = 5,
     ) -> list[dict]:
-        """SQL predicate + vector similarity in a single execution plan."""
+        """SQL predicate + vector similarity with automatic strategy selection.
+
+        Uses HybridPlanner when predicates are present:
+        - Low selectivity (< 5%): Filter-First (SQL filter → NumPy cosine)
+        - High selectivity (> 50%): Vector-First (HNSW → post-filter)
+        - No predicates: Direct HNSW query
+        """
         if len(embedding) != EMBEDDING_DIM:
             raise ValueError(f"Expected {EMBEDDING_DIM} dimensions, got {len(embedding)}")
 
-        params: list = [embedding, self.agent_id]
-        status_clause = ""
+        predicates = {}
         if status is not None:
-            status_clause = "AND status = $3"
-            params.append(status)
-        params.append(limit)
-        limit_param = f"${len(params)}"
+            predicates["status"] = status
 
-        rows = self._conn.execute(
-            f"""
-            SELECT
-                id::TEXT,
-                agent_id,
-                status,
-                task_type,
-                started_at,
-                ended_at,
-                array_cosine_distance(context_embedding, $1::FLOAT[{EMBEDDING_DIM}]) AS distance
-            FROM episodes
-            WHERE context_embedding IS NOT NULL
-              AND agent_id = $2
-              {status_clause}
-            ORDER BY distance ASC
-            LIMIT {limit_param}
-            """,
-            params,
-        ).fetchall()
+        return self._get_planner().execute(
+            agent_id=self.agent_id,
+            embedding=embedding,
+            predicates=predicates if predicates else None,
+            limit=limit,
+        )
 
-        return [
-            {
-                "id": r[0],
-                "agent_id": r[1],
-                "status": r[2],
-                "task_type": r[3],
-                "started_at": r[4],
-                "ended_at": r[5],
-                "distance": r[6],
-            }
-            for r in rows
-        ]
+    def _get_planner(self):
+        """Lazy-init the hybrid planner."""
+        if not hasattr(self, "_planner"):
+            from episodicdb.planner import HybridPlanner
+            self._planner = HybridPlanner(self._conn)
+        return self._planner
